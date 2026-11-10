@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineVerse Explorer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+</head>
+<body>
+
+  <div id="app">
+
+    <header class="navbar">
+      <h1>CineVerse Explorer</h1>
+      <nav class="menu">
+        <button :class="{ active: currentTab === 'shows' }" @click="changeTab('shows')">TV Shows</button>
+        <button :class="{ active: currentTab === 'movies' }" @click="changeTab('movies')">Movies</button>
+        <button :class="{ active: currentTab === 'trivia' }" @click="changeTab('trivia')">Trivia</button>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <h2>{{ titles[currentTab][0] }}</h2>
+      <p>{{ titles[currentTab][1] }}</p>
+    </section>
+
+    <main class="container">
+
+      <!-- Search + filter (shows and movies) -->
+      <section class="controls" v-if="currentTab !== 'trivia'">
+        <input type="text" v-model="searchBox" @keydown.enter="loadData"
+               :placeholder="currentTab === 'shows' ? 'Search a TV show (e.g. batman)' : 'Search a movie (e.g. spirited)'">
+        <select v-model="filterBox" @change="loadData">
+          <option v-for="opt in dropdownOptions" :value="opt[0]">{{ opt[1] }}</option>
+        </select>
+        <button @click="loadData">Search</button>
+      </section>
+
+      <!-- Category + new questions (trivia) -->
+      <section class="controls" v-else>
+        <select v-model="filterBox" @change="loadData">
+          <option v-for="opt in filterOptions.trivia" :value="opt[0]">{{ opt[1] }}</option>
+        </select>
+        <button @click="loadData">New questions</button>
+      </section>
+
+      <!-- Loading -->
+      <section class="message" v-if="loading">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </section>
+
+      <!-- Error -->
+      <section class="message error" v-else-if="errorState">
+        <p>Something went wrong. Please check your internet and try again.</p>
+        <button @click="loadData">Try again</button>
+      </section>
+
+      <!-- Empty -->
+      <section class="message" v-else-if="currentList.length === 0">
+        <p>No results found. Try another search or filter.</p>
+      </section>
+
+      <!-- Results -->
+      <section class="grid" v-else>
+
+        <!-- TV Shows (TVMaze) -->
+        <template v-if="currentTab === 'shows'">
+          <article class="card clickable" v-for="show in currentList" :key="show.id" @click="showDetails(show)">
+            <img v-if="show.image" :src="show.image.medium" :alt="show.name">
+            <p class="noimg" v-else>No image</p>
+            <div class="info">
+              <h3>{{ show.name }}</h3>
+              <p>{{ show.genres.length ? show.genres.join(', ') : 'No genre' }}</p>
+              <p>Rating: {{ show.rating.average || 'N/A' }}</p>
+            </div>
+          </article>
+        </template>
+
+        <!-- Movies (Studio Ghibli) -->
+        <template v-if="currentTab === 'movies'">
+          <article class="card clickable" v-for="movie in currentList" :key="movie.id" @click="showDetails(movie)">
+            <img v-if="movie.image" :src="movie.image" :alt="movie.title">
+            <p class="noimg" v-else>No image</p>
+            <div class="info">
+              <h3>{{ movie.title }}</h3>
+              <p>{{ movie.director }}</p>
+              <p>Released: {{ movie.release_date }}</p>
+            </div>
+          </article>
+        </template>
+
+        <!-- Trivia (Open Trivia DB) -->
+        <template v-if="currentTab === 'trivia'">
+          <article class="card trivia" v-for="(q, index) in currentList" :key="index">
+            <span class="tag">Question {{ index + 1 }} - {{ q.difficulty }}</span>
+            <p class="question" v-html="q.question"></p>
+            <button v-if="!q.show" @click="q.show = true">Show answer</button>
+            <p class="answer" v-else>Answer: <span v-html="q.correct_answer"></span></p>
+          </article>
+        </template>
+
+      </section>
+    </main>
+
+    <!-- Details popup (shows and movies) -->
+    <div class="modal" :class="{ hidden: !modalOpen }" @click.self="closeModal">
+      <article class="modal-box">
+        <button class="close" @click="closeModal">X</button>
+
+        <div v-if="selectedItem && currentTab === 'shows'">
+          <img v-if="selectedItem.image" :src="selectedItem.image.medium" :alt="selectedItem.name">
+          <h2>{{ selectedItem.name }}</h2>
+          <p v-html="selectedItem.summary"></p>
+          <p><b>Genres:</b> {{ selectedItem.genres.length ? selectedItem.genres.join(', ') : 'N/A' }}</p>
+          <p><b>Rating:</b> {{ selectedItem.rating.average || 'N/A' }}</p>
+          <p><b>Language:</b> {{ selectedItem.language }}</p>
+          <p><b>Premiered:</b> {{ selectedItem.premiered || 'N/A' }}</p>
+          <p><b>Status:</b> {{ selectedItem.status }}</p>
+          <p v-if="selectedItem.officialSite"><a :href="selectedItem.officialSite" target="_blank">Official website</a></p>
+        </div>
+
+        <div v-if="selectedItem && currentTab === 'movies'">
+          <img v-if="selectedItem.movie_banner || selectedItem.image" :src="selectedItem.movie_banner || selectedItem.image" :alt="selectedItem.title">
+          <h2>{{ selectedItem.title }}</h2>
+          <p><i>{{ selectedItem.original_title }} ({{ selectedItem.original_title_romanised }})</i></p>
+          <p>{{ selectedItem.description }}</p>
+          <p><b>Director:</b> {{ selectedItem.director }}</p>
+          <p><b>Producer:</b> {{ selectedItem.producer }}</p>
+          <p><b>Released:</b> {{ selectedItem.release_date }}</p>
+          <p><b>Running time:</b> {{ selectedItem.running_time }} minutes</p>
+          <p><b>Rotten Tomatoes score:</b> {{ selectedItem.rt_score }}%</p>
+        </div>
+      </article>
+    </div>
+
+    <footer>
+      <p>APIs: TVMaze, Studio Ghibli API, Open Trivia Database | Vue.js &amp; Vercel</p>
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
